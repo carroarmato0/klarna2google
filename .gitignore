@@ -5,3 +5,4 @@ service-account*.json
 formats.json
 __pycache__/
 skip.json
+.serena/
