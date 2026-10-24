@@ -73,9 +73,12 @@ def build_object(issuer_id, card, formats, logo_base=LOGO_BASE):
         "hexBackgroundColor": colour(name),
         "barcode": {"type": barcode_type, "value": number},
     }
-    if logo_base and (LOGOS / f"{slug(name)}.png").exists():
+    logo = LOGOS / f"{slug(name)}.png"
+    if logo_base and logo.exists():
+        # Wallet caches images by URL; a content hash makes updated logos show up.
+        version = hashlib.sha1(logo.read_bytes()).hexdigest()[:8]
         obj["logo"] = {
-            "sourceUri": {"uri": f"{logo_base}{slug(name)}.png"},
+            "sourceUri": {"uri": f"{logo_base}{slug(name)}.png?v={version}"},
             "contentDescription": {"defaultValue": {"language": "en", "value": f"{name} logo"}},
         }
     if barcode_type != "QR_CODE":

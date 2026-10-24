@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["pillow>=10", "requests>=2.31"]
+# dependencies = ["pillow>=10"]
 # ///
 """Build square 660x660 PNG logos for Google Wallet passes.
 
@@ -20,8 +20,10 @@ import math
 import pathlib
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 
-import requests
 from PIL import Image, ImageDraw, ImageFont
 
 from import_to_wallet import colour, slug
@@ -30,15 +32,23 @@ SIZE = 660
 MIN_SOURCE = 120  # smaller sources look blurry, use a monogram instead
 HERE = pathlib.Path(__file__).resolve().parent
 LOGOS = HERE / "logos"
-UA = {"User-Agent": "klarna2google/0.1 (https://github.com/carroarmato0/klarna2google)"}
+# Some merchant sites reject non-browser clients (and the `requests` library's
+# TLS fingerprint), so use urllib with a browser user agent.
+UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"}
 FAVICON = "https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://{}&size=256"
 
 
 def fetch(source):
     url = FAVICON.format(source.split(":", 1)[1]) if source.startswith("favicon:") else source
-    r = requests.get(url, headers=UA, timeout=20)
-    r.raise_for_status()
-    data = r.content
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=20) as r:
+                data = r.read()
+            break
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or attempt == 3:  # Wikimedia rate-limits bursts
+                raise
+            time.sleep(5 * 2 ** attempt)
     if data.lstrip()[:5] in (b"<?xml", b"<svg ") or b"<svg" in data[:1000]:
         data = subprocess.run(["rsvg-convert", "-w", "1200", "--keep-aspect-ratio"],
                               input=data, capture_output=True, check=True).stdout
@@ -58,13 +68,30 @@ def trim(img):
     return img.crop(box) if box else img
 
 
+def tile_colour(img):
+    """Background colour of a square app-icon style logo (opaque, uniform
+    corners), else None."""
+    if not 0.9 <= img.width / img.height <= 1.1:
+        return None
+    px = img.load()
+    w, h = img.width - 1, img.height - 1
+    corners = [px[x, y] for x, y in ((1, 1), (w - 1, 1), (1, h - 1), (w - 1, h - 1))]
+    if any(c[3] < 250 for c in corners):
+        return None
+    if max(max(c[i] for c in corners) - min(c[i] for c in corners) for i in range(3)) > 24:
+        return None
+    return corners[0]
+
+
 def place(img, fill=0.86):
     """Center on a white square, sized so the logo's corners stay inside the
-    circle Wallet crops it to: square logos get ~60%, wide ones nearly full width."""
+    circle Wallet crops it to: square logos get ~60%, wide ones nearly full width.
+    Square tiles with a solid background instead fill the whole circle."""
     img = trim(img)
-    f = fill * SIZE / math.hypot(*img.size)
+    bg = tile_colour(img)
+    f = SIZE / max(img.size) if bg else fill * SIZE / math.hypot(*img.size)
     img = img.resize((max(1, round(img.width * f)), max(1, round(img.height * f))), Image.LANCZOS)
-    canvas = Image.new("RGBA", (SIZE, SIZE), (255, 255, 255, 255))
+    canvas = Image.new("RGBA", (SIZE, SIZE), bg or (255, 255, 255, 255))
     canvas.alpha_composite(img, ((SIZE - img.width) // 2, (SIZE - img.height) // 2))
     return canvas.convert("RGB")
 
@@ -100,6 +127,7 @@ def main():
     for name, source in sorted(sources.items()):
         if args.only and name not in args.only:
             continue
+        out = LOGOS / f"{slug(name)}.png"
         how = "monogram"
         img = None
         if source:
@@ -110,8 +138,11 @@ def main():
                 else:
                     how = f"monogram (source only {max(raw.size)}px)"
             except Exception as e:  # noqa: BLE001 - any failure means fall back
+                if out.exists():  # a transient error must not replace a good logo
+                    print(f"{name:<20} kept existing ({type(e).__name__}: {str(e)[:60]})", file=sys.stderr)
+                    continue
                 how = f"monogram ({type(e).__name__}: {str(e)[:60]})"
-        (img or monogram(name)).save(LOGOS / f"{slug(name)}.png", optimize=True)
+        (img or monogram(name)).save(out, optimize=True)
         print(f"{name:<20} {how}", file=sys.stderr)
 
 
