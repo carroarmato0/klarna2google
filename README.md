@@ -34,7 +34,19 @@ The script opens every card and reads its number. Don't touch the phone while it
 
 New issuer accounts are in demo mode: passes work for your own account but show `[TEST ONLY]`.
 
-## 3. Import into Google Wallet
+## 3. Skip cards already in Google Wallet
+
+```sh
+python3 scan_wallet.py
+```
+
+Opens Google Wallet on the phone (must be in English), reads the number of every
+pass you already have and writes the Klarna cards found there to `skip.json`. Cards
+already in Wallet win: a match on number (equal, or one ends with the other, as when
+Klarna adds a prefix) is skipped. A match on name only is reported, not skipped.
+Already imported duplicates? Run with `--remove` to delete our copies from Wallet.
+
+## 4. Import into Google Wallet
 
 ```sh
 uv run import_to_wallet.py --key service-account.json --issuer-id <ISSUER_ID>
@@ -43,8 +55,7 @@ uv run import_to_wallet.py --key service-account.json --issuer-id <ISSUER_ID>
 Open the generated `wallet_links.html` on your phone (or `adb shell am start -d '<link>'`)
 and tap **Add**. Re-running the script updates passes already in Wallet.
 
-Cards you already have in Wallet can be left out with `--skip skip.json`, a JSON list of
-card names (e.g. `["GAMMA", "Albert Heijn"]`).
+Cards listed in `skip.json` are left out; use `--skip <file>` for another list.
 
 Klarna doesn't expose the barcode type, so it is guessed from the number. If a card
 doesn't scan, override it in a JSON file and pass `--formats formats.json`:
@@ -61,5 +72,5 @@ Logos are trademarks of their respective owners and are only used to identify th
 
 ## Privacy
 
-`klarna_cards.json`, `wallet_links.html` and `service-account.json` hold personal data or
+`klarna_cards.json`, `skip.json`, `wallet_links.html` and `service-account.json` hold personal data or
 credentials and are git-ignored. Never commit or share them.
