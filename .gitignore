@@ -4,3 +4,4 @@ wallet_links.html
 service-account*.json
 formats.json
 __pycache__/
+skip.json

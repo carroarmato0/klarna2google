@@ -43,6 +43,9 @@ uv run import_to_wallet.py --key service-account.json --issuer-id <ISSUER_ID>
 Open the generated `wallet_links.html` on your phone (or `adb shell am start -d '<link>'`)
 and tap **Add**. Re-running the script updates passes already in Wallet.
 
+Cards you already have in Wallet can be left out with `--skip skip.json`, a JSON list of
+card names (e.g. `["GAMMA", "Albert Heijn"]`).
+
 Klarna doesn't expose the barcode type, so it is guessed from the number. If a card
 doesn't scan, override it in a JSON file and pass `--formats formats.json`:
 
