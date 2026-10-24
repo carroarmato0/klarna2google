@@ -7,13 +7,14 @@ read from the app's accessibility tree over ADB. No root needed.
 
 ## Requirements
 
-- Android phone with USB debugging enabled, Klarna app in **English**
+- Android phone with USB debugging enabled, Klarna app in English, Dutch or French
+  (Klarna → Profile → Language)
 - `adb`, Python 3.10+, [`uv`](https://docs.astral.sh/uv/)
 - A Google Wallet issuer account (free, see below)
 
 ## 1. Extract cards from Klarna
 
-Unlock the phone, open Klarna → **Loyalty Cards**, then:
+Unlock the phone, open Klarna → **Loyalty Cards** (*Klantenkaarten*, *Cartes de fidélité*), then:
 
 ```sh
 python3 extract_klarna.py klarna_cards.json
