@@ -36,8 +36,28 @@ def ean_checksum_ok(digits):
     return (10 - total % 10) % 10 == check
 
 
+# Klarna barcode formats Google Wallet can render as-is.
+WALLET_FORMATS = {"AZTEC", "CODABAR", "CODE_39", "CODE_128", "DATA_MATRIX", "EAN_8", "EAN_13",
+                  "PDF_417", "QR_CODE", "UPC_A"}
+
+
+def wallet_barcode(klarna_format, value):
+    """Map a Klarna barcode format to a Wallet BarcodeType, or None if unknown.
+
+    Wallet only knows ITF_14; other ITF lengths fall back to CODE_128, which
+    most retail scanners read as well."""
+    if klarna_format in WALLET_FORMATS:
+        return klarna_format
+    if klarna_format == "ITF":
+        if len(value) == 14 and value.isdigit():
+            return "ITF_14"
+        print(f"warning: {len(value)}-digit ITF barcode can't be shown in Wallet, using CODE_128", file=sys.stderr)
+        return "CODE_128"
+    return None
+
+
 def guess_barcode(number):
-    """Klarna does not expose the symbology, so infer it from the value."""
+    """Infer the symbology from the value when the format is unknown."""
     if number.startswith(("http://", "https://")) or not number.isascii() or len(number) > 40:
         return "QR_CODE"
     if number.isdigit():
@@ -63,7 +83,9 @@ def colour(name):
 def build_object(issuer_id, card, formats, logo_base=LOGO_BASE):
     name = card["name"]
     number = card["number"]
-    barcode_type = formats.get(name) or guess_barcode(number)
+    value = card.get("barcode_value") or number
+    barcode_type = (formats.get(name) or wallet_barcode(card.get("barcode_format"), value)
+                    or guess_barcode(value))
     obj = {
         "id": f"{issuer_id}.k2g_{slug(name)}_{hashlib.sha1(number.encode()).hexdigest()[:8]}",
         "classId": f"{issuer_id}.{CLASS_SUFFIX}",
@@ -71,7 +93,7 @@ def build_object(issuer_id, card, formats, logo_base=LOGO_BASE):
         "cardTitle": {"defaultValue": {"language": "en", "value": name}},
         "header": {"defaultValue": {"language": "en", "value": card.get("nickname") or name}},
         "hexBackgroundColor": colour(name),
-        "barcode": {"type": barcode_type, "value": number},
+        "barcode": {"type": barcode_type, "value": value},
     }
     logo = LOGOS / f"{slug(name)}.png"
     if logo_base and logo.exists():
