@@ -34,7 +34,35 @@ The script opens every card and reads its number. Don't touch the phone while it
 
 New issuer accounts are in demo mode: passes work for your own account but show `[TEST ONLY]`.
 
-## 3. Skip cards already in Google Wallet
+## 3. Add native loyalty cards where possible
+
+Stores in Google's loyalty catalogue can be added as regular Wallet loyalty cards,
+which never show `[TEST ONLY]` and need no issuer account. With Google Wallet open:
+
+```sh
+uv run add_native.py
+```
+
+This adds every card listed in `PROGRAMS` in the script (store name → catalogue
+programme). Add others with `--program "Card=Programme name"`; find the exact
+programme name in Wallet → Add to Wallet → Loyalty card → search.
+
+Stores that aren't in the catalogue can still become native cards from a picture
+of their barcode:
+
+```sh
+uv run add_native.py --scan
+```
+
+Each barcode is rendered as an image, copied to the phone's `Pictures/klarna2google`
+and imported with the scanner's *Import from gallery*; the image is deleted again
+afterwards. A card is only added when Wallet reads the same barcode. This works for
+1D barcodes (Code 128, Code 39, EAN). Wallet doesn't pick up QR codes, neither from an
+image nor with the camera, so those stay for step 5.
+
+Then run `python3 scan_wallet.py --remove` to delete the klarna2google copies.
+
+## 4. Skip cards already in Google Wallet
 
 ```sh
 python3 scan_wallet.py
@@ -46,7 +74,7 @@ already in Wallet win: a match on number (equal, or one ends with the other, as 
 Klarna adds a prefix) is skipped. A match on name only is reported, not skipped.
 Already imported duplicates? Run with `--remove` to delete our copies from Wallet.
 
-## 4. Import into Google Wallet
+## 5. Import the rest into Google Wallet
 
 ```sh
 uv run import_to_wallet.py --key service-account.json --issuer-id <ISSUER_ID>

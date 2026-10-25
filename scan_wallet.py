@@ -24,7 +24,8 @@ import time
 from extract_klarna import adb, dump, find, label
 
 WALLET = "com.google.android.apps.walletnfcrel"
-ALLOWED = (WALLET, "com.google.android.gms")  # gms hosts some Wallet screens
+ALLOWED = (WALLET, "com.google.android.gms",  # gms hosts some Wallet screens
+           "com.google.android.photopicker")  # used to import a barcode image
 ROW_X = 275  # x of the title/subtitle column in Wallet pass lists
 MIN_SUFFIX = 6
 
@@ -50,6 +51,13 @@ def tap(n):
 def key(code):
     guard()
     adb("shell", "input", "keyevent", code)
+
+
+def type_text(text):
+    """adb input text: spaces as %s, shell metacharacters escaped."""
+    guard()
+    adb("shell", "input", "text", "".join("%s" if ch == " " else ("\\" + ch if ch in "&'()<>;|*$\"" else ch)
+                                          for ch in text))
 
 
 def swipe_up():
@@ -106,18 +114,24 @@ def search(query):
         sys.exit("Lost the Wallet search field.")
     tap(box)
     time.sleep(1.2)
-    guard()
-    adb("shell", "input", "text", re.sub(r"[^\w]", lambda m: "%s" if m.group() == " " else "", query))
+    type_text(query)
     key("ENTER")
     time.sleep(2.5)
     return rows(dump())
 
 
-def open_pass(title, subtitle):
-    hits = [n for t, s, n in search(title) if (t, s) == (title, subtitle)]
-    if not hits:
+def open_pass(title, subtitle, index=0):
+    """Open the index-th pass titled title/subtitle; None if there is no such pass."""
+    # Wallet's search misses some full titles ("Basic-Fit N.V."); the first word still finds them.
+    for query in dict.fromkeys((title, re.split(r"[\s\-.&']", title)[0])):
+        hits = [n for t, s, n in search(query) if (t, s) == (title, subtitle)]
+        if hits:
+            break
+    else:
         return None
-    tap(hits[0])
+    if index >= len(hits):
+        return None
+    tap(hits[index])
     time.sleep(3)
     return dump()
 
@@ -145,13 +159,20 @@ def read_number(title, subtitle):
 
 
 def remove_pass(name):
-    """Remove our pass for `name`; refuses when the opened pass isn't ours."""
-    nodes = open_pass(name, name)
-    if nodes is None:
-        return "not in Wallet"
-    if not any(label(n) in (name, f"[TEST ONLY] {name}") and n["box"][1] < 700 for n in nodes):
+    """Remove our pass for `name`, recognised by its "[TEST ONLY]" title.
+
+    A native card can look the same in the list ("Ivago / Ivago"), so every
+    pass with this title is opened until ours is found."""
+    for index in range(5):
+        nodes = open_pass(name, name, index)
+        if nodes is None:
+            return "not in Wallet"
+        if find(nodes, f"[TEST ONLY] {name}"):
+            break
         key("BACK")
-        return "skipped: opened pass is not ours"
+        time.sleep(1.8)
+    else:
+        return "skipped: none of the passes is ours"
     for _ in range(3):
         if find(dump(), "Remove"):
             break
@@ -165,8 +186,7 @@ def remove_pass(name):
         return "failed: no confirmation dialog"
     tap(confirm)
     time.sleep(2.5)
-    left = [t for t, s, _ in search(name) if (t, s) == (name, name)]
-    return "removed" if not left else "failed: still present"
+    return "removed"
 
 
 def norm(text):
