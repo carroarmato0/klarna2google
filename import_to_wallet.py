@@ -11,6 +11,7 @@ links: one link that saves every card at once, plus one link per card.
 
 Usage:
   uv run import_to_wallet.py --key service-account.json --issuer-id 3388000000012345678
+  uv run import_to_wallet.py --key ... --issuer-id ... CRU "AB Race"   # only these cards
   uv run import_to_wallet.py --dry-run          # print the passes, touch nothing
 """
 import argparse
@@ -163,13 +164,14 @@ def main():
                     help="public URL prefix where logos/<slug>.png are hosted ('' to disable)")
     ap.add_argument("--out", default="wallet_links.html")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("names", nargs="*", help="cards to import (default: all not in the skip list)")
     args = ap.parse_args()
 
     cards = json.load(open(args.cards))
     skip = set(json.load(open(args.skip))) if args.skip and pathlib.Path(args.skip).exists() else set()
     if skip:
         print(f"Leaving out {len(skip)} cards listed in {args.skip}", file=sys.stderr)
-    cards = [c for c in cards if c["name"] not in skip]
+    cards = [c for c in cards if c["name"] not in skip and (not args.names or c["name"] in args.names)]
     formats = json.load(open(args.formats)) if args.formats else {}
     issuer_id = args.issuer_id or "ISSUER_ID"
     objects = [build_object(issuer_id, c, formats, args.logo_base) for c in cards]

@@ -29,7 +29,7 @@ import sys
 import tempfile
 import time
 
-from extract_klarna import adb, dump, find, label
+from adb_ui import adb, dump, find, label
 from scan_wallet import WALLET, guard_unlocked, key, tap, type_text
 
 PROGRAMS = {
@@ -112,10 +112,12 @@ def render(card, path):
     value = card.get("barcode_value") or card["number"]
     fmt = card.get("barcode_format")
     if fmt in ("QR_CODE", "AZTEC", "DATA_MATRIX", "PDF_417"):
-        import segno  # Wallet reads QR fine; other 2D formats are rare on loyalty cards
-        segno.make(value, error="m").save(path, scale=14, border=4)
+        import segno  # Aztec, Data Matrix and PDF417 are drawn as QR too; rare on loyalty cards
+        # make_qr, not make: make picks Micro QR for short values, which Wallet can't read.
+        # Wallet only finds longer QR codes when the modules are big (scale 14 failed, 32 works).
+        segno.make_qr(value, error="m").save(path, scale=32, border=4)
         return
-    from barcode import EAN13, Code39, Code128
+    from barcode import EAN13, ITF, Code39, Code128
     from barcode.writer import ImageWriter
     opts = {"module_width": 0.5, "module_height": 25, "quiet_zone": 8, "font_size": 12,
             "text_distance": 5, "dpi": 300}
@@ -123,6 +125,8 @@ def render(card, path):
         code = Code39(value, writer=ImageWriter(), add_checksum=False)
     elif fmt == "EAN_13" and len(value) == 13:
         code = EAN13(value[:12], writer=ImageWriter())
+    elif fmt == "ITF" and value.isdigit() and len(value) % 2 == 0:
+        code = ITF(value, writer=ImageWriter())
     else:
         code = Code128(value, writer=ImageWriter())
     code.save(str(path)[:-4], opts)
@@ -197,7 +201,12 @@ def add_scanned(card):
     code = next((label(n) for n in nodes if re.match(r"(Barcode|QR code)", label(n))), None)
     if code is None:
         return discard("Wallet found no barcode in the image")
-    if code.startswith("Barcode") and digits(value) and digits(code) != digits(value):
+    # TalkBack labels read "Barcode 6 1 0 …" (digits only) or "QR code <contents>" (digits spaced).
+    if code.startswith("Barcode"):
+        ok = not digits(value) or digits(code) == digits(value)
+    else:
+        ok = re.sub(r"\s", "", code[len("QR code"):]) == re.sub(r"\s", "", value)
+    if not ok:
         return discard("Wallet read a different barcode")
     tap(find(nodes, "Add"))
     nodes = wait_for("Added to Wallet", tries=10)

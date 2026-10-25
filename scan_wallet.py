@@ -21,7 +21,7 @@ import re
 import sys
 import time
 
-from extract_klarna import adb, dump, find, label
+from adb_ui import adb, dump, find, label
 
 WALLET = "com.google.android.apps.walletnfcrel"
 ALLOWED = (WALLET, "com.google.android.gms",  # gms hosts some Wallet screens
